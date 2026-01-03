@@ -1,0 +1,20 @@
+[project]
+name = "agent-alpha"
+version = "0.0.0"
+description = "Agent Alpha package"
+requires-python = ">=3.13"
+
+dependencies = [
+  "lib1>=0.0.0"
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools]
+py-modules = ["agent_alpha"]
+package-dir = {"" = "src"}

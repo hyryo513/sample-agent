@@ -1,5 +1,4 @@
-from sample_agent.runner import create_agent_components, run_once, shutdown
-from sample_agent.config import Config
+from agent_beta import create_agent_components, run_once, shutdown, Config
 
 
 def test_run_once_default():
@@ -9,6 +8,5 @@ def test_run_once_default():
     assert "langgraph_response" in out
     assert out["langgraph_response"] == "echo: ping" or isinstance(out["langgraph_response"], str)
     assert "agentcore_response" in out
-    # agentcore_response is a dict stub when no real endpoint is provided
     assert isinstance(out["agentcore_response"], dict)
     shutdown(comps)

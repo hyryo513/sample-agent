@@ -1,0 +1,16 @@
+[project]
+name = "lib1"
+version = "0.0.0"
+description = "Reusable library 1"
+requires-python = ">=3.13"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools]
+py-modules = ["lib1"]
+package-dir = {"" = "src"}

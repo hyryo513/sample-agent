@@ -40,9 +40,11 @@ line-length = 88
 
 # uv tool configuration — merged from uv.toml
 [tool.uv]
-registry = "pypi"
-lockfile = "uv.lock"
 
-[tool.uv.project]
-name = "sample-agent"
-python = "3.13"
+[tool.uv.sources]
+lib1 = { workspace = true }
+"agent-alpha" = { workspace = true }
+"agent-beta" = { workspace = true }
+
+[tool.uv.workspace]
+members = ["packages/*"]
