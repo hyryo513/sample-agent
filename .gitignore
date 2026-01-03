@@ -1,0 +1,40 @@
+# Byte-compiled / cached files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# pyenv
+.pyenv/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+
+# uv lockfile
+uv.lock
+
+# Installer / temp artifacts
+python-3.13*.pkg
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+
+# Credentials / env files
+.env
+.env.*
+
+# Other
+sample_agent.egg-info/

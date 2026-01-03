@@ -1,0 +1,48 @@
+[project]
+name = "sample-agent"
+version = "0.0.0"
+description = "Prototype for SDLC automation for AI agents using LangGraph and AWS agentcore"
+readme = "README.md"
+requires-python = ">=3.13"
+
+# runtime dependencies (placeholders)
+dependencies = [
+  "langgraph>=0.0.1 ; python_version >= '3.13'",
+  "uv>=0.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "requests>=2.0",
+  "ruff",
+  "black",
+  "isort",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+
+[tool.ruff]
+line-length = 88
+
+# uv tool configuration — merged from uv.toml
+[tool.uv]
+registry = "pypi"
+lockfile = "uv.lock"
+
+[tool.uv.project]
+name = "sample-agent"
+python = "3.13"
