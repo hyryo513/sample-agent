@@ -1,0 +1,226 @@
+name: Build Lambda Packages
+
+on:
+  push:
+    tags:
+      - 'agent-alpha-v*'
+      - 'agent-beta-v*'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to build (agent-alpha or agent-beta)'
+        required: true
+        default: 'agent-alpha'
+      version:
+        description: 'Semantic version (e.g., 1.0.0)'
+        required: true
+
+env:
+  PYTHON_VERSION: '3.12'
+  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  parse-tag:
+    name: Parse Git Tag
+    runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.parse.outputs.package }}
+      version: ${{ steps.parse.outputs.version }}
+      should_build: ${{ steps.parse.outputs.should_build }}
+    steps:
+      - name: Parse tag for package and version
+        id: parse
+        run: |
+          TAG="${{ github.ref }}"
+          
+          # Extract from tag format: refs/tags/agent-alpha-v1.2.3
+          if [[ $TAG =~ ^refs/tags/(agent-alpha|agent-beta)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            PACKAGE="${BASH_REMATCH[1]}"
+            VERSION="${BASH_REMATCH[2]}"
+            echo "package=${PACKAGE}" >> $GITHUB_OUTPUT
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "✓ Parsed: $PACKAGE v$VERSION"
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "⊘ Tag does not match expected format (agent-{alpha|beta}-v{semver})"
+          fi
+      
+      - name: Manual trigger override
+        if: github.event_name == 'workflow_dispatch'
+        id: override
+        run: |
+          echo "package=${{ github.event.inputs.package }}" >> $GITHUB_OUTPUT
+          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          echo "should_build=true" >> $GITHUB_OUTPUT
+          echo "✓ Manual trigger: ${{ github.event.inputs.package }} v${{ github.event.inputs.version }}"
+
+  test:
+    name: Test All Packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install uv package manager
+        run: pip install uv
+      
+      - name: Sync dependencies
+        run: uv sync
+      
+      - name: Run tests (pytest)
+        run: uv run pytest -v packages/*/tests/
+
+  build-agent:
+    name: Build ${{ needs.parse-tag.outputs.package }}
+    needs: [parse-tag, test]
+    runs-on: ubuntu-latest
+    if: needs.parse-tag.outputs.should_build == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install build tools
+        run: |
+          pip install uv build wheel
+      
+      - name: Create Lambda deployment package
+        id: lambda-build
+        run: |
+          PACKAGE_NAME="${{ needs.parse-tag.outputs.package }}"
+          VERSION="${{ needs.parse-tag.outputs.version }}"
+          ARTIFACT_NAME="${PACKAGE_NAME}-${VERSION}"
+          STAGING_DIR=$(mktemp -d)
+          
+          echo "package_name=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "artifact_name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+          echo "staging_dir=${STAGING_DIR}" >> $GITHUB_OUTPUT
+          echo "zip_path=${ARTIFACT_NAME}.zip" >> $GITHUB_OUTPUT
+          
+          # Install agent and dependencies into staging directory
+          echo "📦 Installing agent and dependencies..."
+          pip install -t "${STAGING_DIR}" -e "packages/${PACKAGE_NAME}[dev]"
+          
+          # Bundle lib1 (shared dependency)
+          echo "📦 Bundling lib1 shared library..."
+          pip install -t "${STAGING_DIR}" -e "packages/lib1"
+          
+          # Remove unnecessary files to reduce Lambda package size
+          echo "🧹 Cleaning up unnecessary files..."
+          rm -rf "${STAGING_DIR}"/{*.dist-info,*.egg-info,pip*,setuptools*,wheel*}
+          find "${STAGING_DIR}" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+          find "${STAGING_DIR}" -type f -name "*.pyc" -delete
+          find "${STAGING_DIR}" -type f -name "*.pyo" -delete
+          
+          # Create Lambda zip with handler at root
+          echo "🏗️  Creating Lambda deployment zip..."
+          cd "${STAGING_DIR}"
+          zip -r - . > "../../${ARTIFACT_NAME}.zip"
+          cd -
+          
+          # Verify zip was created
+          if [ -f "${ARTIFACT_NAME}.zip" ]; then
+            SIZE=$(du -h "${ARTIFACT_NAME}.zip" | cut -f1)
+            echo "✓ Lambda package created: ${ARTIFACT_NAME}.zip (${SIZE})"
+          else
+            echo "✗ Failed to create Lambda package"
+            exit 1
+          fi
+      
+      - name: Upload Lambda package as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.lambda-build.outputs.artifact_name }}
+          path: ${{ steps.lambda-build.outputs.zip_path }}
+          retention-days: 30
+      
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ steps.lambda-build.outputs.zip_path }}
+          draft: false
+          prerelease: false
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload to S3
+        if: env.AWS_ACCOUNT_ID != '' && env.AWS_REGION != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Upload artifact to S3
+        if: env.AWS_ACCOUNT_ID != '' && env.AWS_REGION != ''
+        run: |
+          S3_BUCKET="${{ secrets.S3_BUCKET_NAME }}"
+          ARTIFACT_PATH="${{ steps.lambda-build.outputs.zip_path }}"
+          
+          if [ -z "$S3_BUCKET" ]; then
+            echo "⊘ S3_BUCKET_NAME not configured in GitHub Secrets"
+            echo "   To enable S3 upload, configure: AWS_ACCOUNT_ID, AWS_REGION, S3_BUCKET_NAME"
+            echo "   AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) also required"
+          else
+            echo "📤 Uploading to s3://${S3_BUCKET}/$ARTIFACT_PATH"
+            aws s3 cp "$ARTIFACT_PATH" "s3://${S3_BUCKET}/$ARTIFACT_PATH" \
+              --region "${{ env.AWS_REGION }}" \
+              --metadata "agent=${{ steps.lambda-build.outputs.package_name }},version=${{ steps.lambda-build.outputs.version }}"
+            echo "✓ Upload complete"
+          fi
+      
+      - name: Optional: Update Lambda function
+        if: env.AWS_ACCOUNT_ID != '' && env.AWS_REGION != ''
+        run: |
+          LAMBDA_FUNCTION="${{ steps.lambda-build.outputs.package_name }}-${{ steps.lambda-build.outputs.version }}"
+          ARTIFACT_PATH="${{ steps.lambda-build.outputs.zip_path }}"
+          
+          # This step is optional and depends on your deployment infrastructure
+          # Uncomment and configure as needed:
+          # aws lambda update-function-code \
+          #   --function-name "$LAMBDA_FUNCTION" \
+          #   --zip-file "fileb://${ARTIFACT_PATH}" \
+          #   --region "${{ env.AWS_REGION }}"
+          
+          echo "📋 Deployment step configured as optional."
+          echo "   To enable automatic Lambda function updates, configure:"
+          echo "   - Lambda function naming convention"
+          echo "   - IAM permissions for lambda:UpdateFunctionCode"
+          echo "   Artifacts are available in GitHub Releases and S3 for manual deployment."
+
+  summary:
+    name: Build Summary
+    needs: [parse-tag, test, build-agent]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Print build summary
+        run: |
+          echo "🎯 Build Pipeline Summary"
+          echo "=========================="
+          echo "Package: ${{ needs.parse-tag.outputs.package }}"
+          echo "Version: ${{ needs.parse-tag.outputs.version }}"
+          echo "Tests: ${{ needs.test.result }}"
+          echo "Build: ${{ needs.build-agent.result }}"
+          echo ""
+          echo "📦 Artifacts available:"
+          echo "  - GitHub Releases (for git tag builds)"
+          echo "  - GitHub Actions artifacts (workflow downloads)"
+          echo "  - S3 (if AWS credentials configured in Secrets)"

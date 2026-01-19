@@ -1,8 +1,11 @@
 [project]
 name = "lib1"
 version = "0.0.0"
-description = "Reusable library 1"
-requires-python = ">=3.13"
+description = "Reusable library 1 - Strands-compatible utilities and configuration"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.0",
+]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

@@ -1,11 +1,12 @@
 [project]
 name = "agent-alpha"
 version = "0.0.0"
-description = "Agent Alpha package"
-requires-python = ">=3.13"
+description = "Agent Alpha - Strands-based agent for AWS Lambda deployment"
+requires-python = ">=3.12"
 
 dependencies = [
-  "lib1>=0.0.0"
+  "pydantic>=2.0",
+  "lib1>=0.0.0",
 ]
 
 [build-system]
@@ -16,5 +17,5 @@ build-backend = "setuptools.build_meta"
 dev = ["pytest"]
 
 [tool.setuptools]
-py-modules = ["agent_alpha"]
+py-modules = ["agent_alpha", "lambda_handler"]
 package-dir = {"" = "src"}
