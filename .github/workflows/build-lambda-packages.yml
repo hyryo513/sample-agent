@@ -75,6 +75,12 @@ jobs:
       - name: Sync dependencies
         run: uv sync
       
+      - name: Install workspace packages in editable mode
+        run: |
+          uv pip install -e packages/lib1
+          uv pip install -e packages/agent-alpha
+          uv pip install -e packages/agent-beta
+      
       - name: Run tests (pytest)
         run: uv run --with pytest pytest -v packages/*/tests/
 
