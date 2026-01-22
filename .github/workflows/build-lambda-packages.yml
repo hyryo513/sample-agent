@@ -17,11 +17,9 @@ on:
 
 env:
   PYTHON_VERSION: '3.12'
-  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
 
 permissions:
-  contents: read
-  packages: write
+  contents: write
 
 jobs:
   parse-tag:
@@ -159,51 +157,6 @@ jobs:
           tag_name: ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Upload to S3
-        if: env.AWS_ACCOUNT_ID != '' && env.AWS_REGION != ''
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      
-      - name: Upload artifact to S3
-        if: env.AWS_ACCOUNT_ID != '' && env.AWS_REGION != ''
-        run: |
-          S3_BUCKET="${{ secrets.S3_BUCKET_NAME }}"
-          ARTIFACT_PATH="${{ steps.lambda-build.outputs.zip_path }}"
-          
-          if [ -z "$S3_BUCKET" ]; then
-            echo "⊘ S3_BUCKET_NAME not configured in GitHub Secrets"
-            echo "   To enable S3 upload, configure: AWS_ACCOUNT_ID, AWS_REGION, S3_BUCKET_NAME"
-            echo "   AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) also required"
-          else
-            echo "📤 Uploading to s3://${S3_BUCKET}/$ARTIFACT_PATH"
-            aws s3 cp "$ARTIFACT_PATH" "s3://${S3_BUCKET}/$ARTIFACT_PATH" \
-              --region "${{ env.AWS_REGION }}" \
-              --metadata "agent=${{ steps.lambda-build.outputs.package_name }},version=${{ steps.lambda-build.outputs.version }}"
-            echo "✓ Upload complete"
-          fi
-      
-      - name: Optional: Update Lambda function
-        if: env.AWS_ACCOUNT_ID != '' && env.AWS_REGION != ''
-        run: |
-          LAMBDA_FUNCTION="${{ steps.lambda-build.outputs.package_name }}-${{ steps.lambda-build.outputs.version }}"
-          ARTIFACT_PATH="${{ steps.lambda-build.outputs.zip_path }}"
-          
-          # This step is optional and depends on your deployment infrastructure
-          # Uncomment and configure as needed:
-          # aws lambda update-function-code \
-          #   --function-name "$LAMBDA_FUNCTION" \
-          #   --zip-file "fileb://${ARTIFACT_PATH}" \
-          #   --region "${{ env.AWS_REGION }}"
-          
-          echo "📋 Deployment step configured as optional."
-          echo "   To enable automatic Lambda function updates, configure:"
-          echo "   - Lambda function naming convention"
-          echo "   - IAM permissions for lambda:UpdateFunctionCode"
-          echo "   Artifacts are available in GitHub Releases and S3 for manual deployment."
 
   summary:
     name: Build Summary
@@ -223,4 +176,3 @@ jobs:
           echo "📦 Artifacts available:"
           echo "  - GitHub Releases (for git tag builds)"
           echo "  - GitHub Actions artifacts (workflow downloads)"
-          echo "  - S3 (if AWS credentials configured in Secrets)"
