@@ -76,7 +76,7 @@ jobs:
         run: uv sync
       
       - name: Run tests (pytest)
-        run: uv run pytest -v packages/*/tests/
+        run: uv run --with pytest pytest -v packages/*/tests/
 
   build-agent:
     name: Build ${{ needs.parse-tag.outputs.package }}
